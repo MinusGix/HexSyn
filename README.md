@@ -83,3 +83,8 @@ AA * 2 * 2
 ```
 Will only do `0xAAAAAA`
 Rather than repeating the last times again, it would be nice to do this as well.
+
+The best way that I've found (on a Linux System with `hexdump` installed) to convert an existing file to a way that immediately works with this is:
+```
+hexdump -v -e '/1 "%02X "' filename > file.hex
+```
