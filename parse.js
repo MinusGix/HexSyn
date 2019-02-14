@@ -506,6 +506,19 @@ function toBuffer (data) {
 	return Buffer.from(data.map(x => parseInt(x, 16)));
 }
 
+function doAllSteps (text) {
+	let parseResult = parse(text);
+
+	let convertResult = convert(parseResult);
+
+	let expandResult = expand(convertResult);
+
+	let hexArrResult = toHexArray(expandResult);
+
+	let bufResult = toBuffer(hexArrResult);
+	
+	return bufResult;
+}
 
 
 module.exports = {
@@ -514,4 +527,5 @@ module.exports = {
 	expand,
 	toHexArray,
 	toBuffer,
+	doAllSteps,
 };
