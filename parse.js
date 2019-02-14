@@ -280,6 +280,24 @@ function parseType (text, i, lineCounter) {
 			line: lineCounter,
 			value: result
 		};
+	} else if (text[i + 1] === ':') {
+		ret = {
+			type: 'function',
+			pos: i,
+			line: lineCounter,
+			name: '',
+		};
+
+		i += 2; // skip past !:
+		while (i < text.length) {
+			if (text[i] === ":") {
+				i++;
+				break;
+			} else {
+				ret.name += text[i];
+				i++;
+			}
+		}
 	} else {
 		throw unexpectedCharacter(text[i], i, lineCounter, "Expected 'b' (binary), 'd' (decimal), 'x' (hexadecimal), or 'o' (octal).");
 	}
@@ -304,120 +322,167 @@ function consumeWhitespace (text, i, lineCounter) {
 	};
 }
 
+function parseData (text, i, lineCounter, data)  {
+	if (WHITESPACE_REG.test(text[i])) {
+		if (text[i] === '\n') {
+			lineCounter++;
+		}
+
+		i++;
+	} else if (HEX_REG.test(text[i])) {
+		let val = {
+			type: 'bytegroup',
+			byteType: 'hex',
+			pos: i,
+			line: lineCounter,
+			value: null
+		};
+
+		let temp = parseHex(text, i, lineCounter);
+		i = temp.pos;
+		lineCounter = temp.lineCounter;
+		val.value = temp.value;
+
+		data.push(val);
+	} else if (text[i] === ';') {
+		while (i < text.length && text[i] !== '\n') {
+			i++; // consume comments
+		}
+	} else if (text[i] === '!') {
+		let temp = parseType(text, i, lineCounter);
+		i = temp.pos;
+		lineCounter = temp.lineCounter;
+		data.push(temp.value);
+	} else if (text[i] === '*') {
+		let _i = i;
+		let _line = lineCounter;
+
+		i++;
+
+		let temp1 = consumeWhitespace(text, i, lineCounter);
+		i = temp1.pos;
+		lineCounter = temp1.lineCounter;
+
+		// TODO: Currently requires you to specify the type. It would be nice if it could default to hex
+		let temp = parseType(text, i, lineCounter);
+		i = temp.pos;
+		lineCounter = temp.lineCounter;
+		data.push({
+			type: 'times',
+			pos: _i,
+			line: _line,
+			value: temp.value
+		})
+	} else if (text[i] === '{') {
+		let res = {
+			type: 'bracket',
+			pos: i,
+			line: lineCounter,
+			value: [],
+		};
+		i++;
+		while (text[i] !== '}') {
+			if (i >= text.length) {
+				throw new Error("Unclosed bracket.");
+			}
+
+			let temp = parseData(text, i, lineCounter, res.value);
+			i = temp.i;
+			lineCounter = temp.lineCounter;
+		}
+		i++;
+		data.push(res);
+	} else {
+		throw unexpectedCharacter(text[i], i, lineCounter);
+	}
+
+	return {
+		i,
+		lineCounter,
+	}
+}
+
 function parse (text) {
-	console.log(`"${text}"`);
 	let data = [];
 	let lineCounter = 0;
 
 
 	for (let i = 0; i < text.length;) {
-		if (WHITESPACE_REG.test(text[i])) {
-			if (text[i] === '\n') {
-				lineCounter++;
-			}
+		let temp = parseData(text, i, lineCounter, data);
 
-			i++;
-		} else if (HEX_REG.test(text[i])) {
-			let val = {
-				type: 'bytegroup',
-				byteType: 'hex',
-				pos: i,
-				line: lineCounter,
-				value: null
-			};
-
-			let temp = parseHex(text, i, lineCounter);
-			i = temp.pos;
-			lineCounter = temp.lineCounter;
-			val.value = temp.value;
-
-			data.push(val);
-		} else if (text[i] === ';') {
-			while (i < text.length && text[i] !== '\n') {
-				i++; // consume comments
-			}
-		} else if (text[i] === '!') {
-			let temp = parseType(text, i, lineCounter);
-			i = temp.pos;
-			lineCounter = temp.lineCounter;
-			data.push(temp.value);
-		} else if (text[i] === '*') {
-			let _i = i;
-			let _line = lineCounter;
-
-			i++;
-
-			let temp1 = consumeWhitespace(text, i, lineCounter);
-			i = temp1.pos;
-			lineCounter = temp1.lineCounter;
-
-			// TODO: Currently requires you to specify the type. It would be nice if it could default to hex
-			let temp = parseType(text, i, lineCounter);
-			i = temp.pos;
-			lineCounter = temp.lineCounter;
-			data.push({
-				type: 'times',
-				pos: _i,
-				line: _line,
-				value: temp.value
-			})
-		} else {
-			throw unexpectedCharacter(text[i], i, lineCounter);
-		}
+		i = temp.i;
+		lineCounter = temp.lineCounter;
 	}
 
 	return data;
+}
+
+function convertData (i, data, ret) {
+	if (data[i].type === 'bytegroup') {
+		if (data[i].byteType === 'hex') {
+			ret.push({
+				type: 'bytegroup',
+				line: data[i].line,
+				pos: data[i].pos,
+				value: data[i].value
+			});
+		} else if (data[i].byteType === 'decimal') {
+			ret.push({
+				type: 'bytegroup',
+				line: data[i].line,
+				pos: data[i].pos,
+				value: decToHex(data[i].value)
+			});
+		} else if (data[i].byteType === 'octal') {
+			ret.push({
+				type: 'bytegroup',
+				line: data[i].line,
+				pos: data[i].pos,
+				value: decToHex(octToDec(data[i].value))
+			});
+		} else if (data[i].byteType === 'binary') {
+			ret.push({
+				type: 'bytegroup',
+				line: data[i].line,
+				pos: data[i].pos,
+				value: decToHex(binToDec(data[i].value))
+			})
+		} else if (data[i].byteType === 'string') {
+			ret.push({
+				type: 'bytegroup',
+				line: data[i].line,
+				pos: data[i].pos,
+				value: data[i].value.split('').map(x => x.charCodeAt(0).toString(16)).join('')
+			});
+		} else {
+			throw new Error("Unimplemented byte type: " + data[i].byteType);
+		}
+	} else if (data[i].type === 'times') {
+		// we don't do anything with this.
+		ret.push(data[i]);
+	} else if (data[i].type === 'bracket') {
+		let newData = [];
+		for (let j = 0; j < data[i].value.length; j++) {
+			let temp = convertData(j, data[i].value, newData);
+			j = temp.i;
+		}
+		data[i].value = newData;
+		ret.push(data[i]);
+	} else {
+		throw new Error("Unimplemented type: " + data[i].type);
+	}
+
+	return {
+		i,
+	};
 }
 
 function convert (data) {
 	let ret = [];
 	// Convert all of it into byte form.
 	for (let i = 0; i < data.length; i++) {
-		if (data[i].type === 'bytegroup') {
-			if (data[i].byteType === 'hex') {
-				ret.push({
-					type: 'bytegroup',
-					line: data[i].line,
-					pos: data[i].pos,
-					value: data[i].value
-				});
-			} else if (data[i].byteType === 'decimal') {
-				ret.push({
-					type: 'bytegroup',
-					line: data[i].line,
-					pos: data[i].pos,
-					value: decToHex(data[i].value)
-				});
-			} else if (data[i].byteType === 'octal') {
-				ret.push({
-					type: 'bytegroup',
-					line: data[i].line,
-					pos: data[i].pos,
-					value: decToHex(octToDec(data[i].value))
-				});
-			} else if (data[i].byteType === 'binary') {
-				ret.push({
-					type: 'bytegroup',
-					line: data[i].line,
-					pos: data[i].pos,
-					value: decToHex(binToDec(data[i].value))
-				})
-			} else if (data[i].byteType === 'string') {
-				ret.push({
-					type: 'bytegroup',
-					line: data[i].line,
-					pos: data[i].pos,
-					value: data[i].value.split('').map(x => x.charCodeAt(0).toString(16)).join('')
-				});
-			} else {
-				throw new Error("Unimplemented byte type: " + data[i].byteType);
-			}
-		} else if (data[i].type === 'times') {
-			// we don't do anything with this.
-			ret.push(data[i]);
-		} else {
-			throw new Error("Unimplemented type: " + data[i].type);
-		}
+		let temp = convertData(i, data, ret);
+		i = temp.i;
 	}
 	return ret;
 }
@@ -427,6 +492,10 @@ function expand (data) {
 	data = expandTimes(data);
 
 	return data;
+}
+
+function expandBrackets (data) {
+
 }
 
 function expandTimes (data) {
@@ -466,6 +535,9 @@ function expandTimes (data) {
 			for (let j = 0; j < times; j++) {
 				ret.push(simpleClone(prev));
 			}
+		} else if (data[i].type === 'bracket') {
+			data[i].value = expandTimes(data[i].value);
+			ret.push(data[i]);
 		} else {
 			throw new Error("Unimplemented type: " + data[i].type);
 		}
