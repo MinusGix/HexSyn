@@ -54,7 +54,25 @@ let includeAsciiComments = false;
 
 if (argv.a !== undefined) {
 	includeAsciiComments = true;
+} // There is not --include-ascii because i'm unsure of how to make minimist ignore things after it
+
+let includeOffsetComments = false;
+
+if (argv.f !== undefined) {
+	includeOffsetComments = true;
 }
+
+let offsetType = 'hex';
+
+if (argv.offsetType !== undefined) {
+	offsetType = argv.offsetType;
+}
+
+if (offsetType !== 'hex' && offsetType !== 'dec') {
+	console.error("Expect offsetType of 'hex' or 'dec'");
+	return;
+}
+
 
 /**
  *
@@ -88,6 +106,8 @@ function toHex (buf) {
 
 	let strResult = '';
 
+	let curOffset = 0;
+	let offsetIncr = bytesTogether * columns;
 	for (let i = 0; i < result.length; i++) {
 		for (let j = 0; j < result[i].length; j++) {
 			strResult += result[i][j].join('') + ' ';
@@ -95,6 +115,7 @@ function toHex (buf) {
 
 		if (includeAsciiComments) {
 			strResult += '; ';
+			
 			for (let j = 0; j < result[i].length; j++) {
 				for (let k = 0; k < result[i][j].length; k++) {
 					// this could be made into an object which we lookup the hex into, might be faster
@@ -106,6 +127,24 @@ function toHex (buf) {
 					}
 				}
 			}
+		}
+
+		if (includeOffsetComments) {
+			if (includeAsciiComments) {
+				strResult += ' ';
+			} else {
+				strResult += '; ';
+			}
+
+			if (offsetType === 'hex') {
+				strResult += curOffset.toString(16);
+			} else if (offsetType === 'dec') {
+				strResult += curOffset.toString(10);
+			} else {
+				strResult += 'ERR';
+			}
+			
+			curOffset += offsetIncr;
 		}
 
 		strResult += '\n'
