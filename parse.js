@@ -468,6 +468,8 @@ function convertData (i, data, ret) {
 		}
 		data[i].value = newData;
 		ret.push(data[i]);
+	} else if (data[i].type === 'function') {
+		ret.push(data[i]);
 	} else {
 		throw new Error("Unimplemented type: " + data[i].type);
 	}
@@ -487,15 +489,50 @@ function convert (data) {
 	return ret;
 }
 
-function expand (data) {
+function expand (data, funcs={}) {
 	// expand all the times
 	data = expandTimes(data);
+
+	data = expandFunctions(data, funcs);
 
 	return data;
 }
 
 function expandBrackets (data) {
 
+}
+
+function expandFunctions (data, funcs={}) {
+	let ret = [];
+
+	for (let i = 0; i < data.length; i++) {
+		if (data[i].type === 'function') {
+			if (!funcs.hasOwnProperty(data[i].name)) {
+				throw new Error("Invalid function name!");
+			}
+
+			if (data[i + 1] === undefined) {
+				throw new Error("No data after function call. (Use {} if you don't want to pass anything)");
+			}
+
+			let result = funcs[data[i].name](data[i + 1]);
+			
+			if (Array.isArray(result)) {
+				ret.push(...result);
+			} else {
+				ret.push(result);
+			}
+
+			i++; // skip past next, as we used it for param
+		} else if (data[i].type === 'bracket') {
+			data[i].value = expandFunctions(data[i].value, funcs);
+			ret.push(data[i]);
+		} else {
+			ret.push(data[i]);
+		}
+	}
+
+	return ret;
 }
 
 function expandTimes (data) {
@@ -537,6 +574,8 @@ function expandTimes (data) {
 			}
 		} else if (data[i].type === 'bracket') {
 			data[i].value = expandTimes(data[i].value);
+			ret.push(data[i]);
+		} else if (data[i].type === 'function') {
 			ret.push(data[i]);
 		} else {
 			throw new Error("Unimplemented type: " + data[i].type);
