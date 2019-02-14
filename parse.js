@@ -495,11 +495,23 @@ function expand (data, funcs={}) {
 
 	data = expandFunctions(data, funcs);
 
+	data = expandBrackets(data);
+
 	return data;
 }
 
 function expandBrackets (data) {
+	let ret = [];
 
+	for (let i = 0; i < data.length; i++) {
+		if (data[i].type === 'bracket') {
+			ret.push(...expandBrackets(data[i].value));
+		} else {
+			ret.push(data[i]);
+		}
+	}
+
+	return ret;
 }
 
 function expandFunctions (data, funcs={}) {
