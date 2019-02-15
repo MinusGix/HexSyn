@@ -603,7 +603,27 @@ function convert (data) {
 	return ret;
 }
 
+function _recursiveReverse (byte) {
+	if (byte.type === "bracket") {
+		byte.value.reverse();
+		for (let i = 0; i < byte.value.length; i++) {
+			byte.value[i] = _recursiveReverse(byte.value[i]);
+		}
+		return byte;
+	} else {
+		return byte;
+	}
+}
+
+let defaultFunctions = {
+	REVERSE: function (byte) {
+		return _recursiveReverse(byte);
+	}
+};
+
 function expand (data, funcs={}) {
+	Object.assign(funcs, defaultFunctions);
+
 	// expand all the times
 	data = expandTimes(data);
 
