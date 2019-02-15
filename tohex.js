@@ -1,5 +1,6 @@
 let fs = require('fs');
 let argv = require('minimist')(process.argv.slice(2));
+let stream = require('stream');
 
 // TODO: add a -h/--help
 
@@ -16,6 +17,8 @@ if (argv.o !== undefined) {
 	outputTo = argv.o;
 } else if (argv.output !== undefined) {
 	outputTo = argv.output;
+} else {
+	throw new Error("Requires output file.");
 }
 
 let columns = 5;
@@ -74,89 +77,101 @@ if (offsetType !== 'hex' && offsetType !== 'dec') {
 }
 
 
-/**
- *
- *
- * @param {Buffer} buf
- * @returns
- */
-function toHex (buf) {
-	let result = [];
+function toHex (filename, outFile) {
+	let fd = fs.openSync(filename, 'r');
+	let outFd = fs.openSync(outFile, 'w');
 
-	let curByteCount = 0;
-	let curByteGroupCount = 0;
-	
-	buf.forEach((val, i) => {
-		let byte = (val < 16 ? '0' : '') + val.toString(16);
+	let outStream = fs.createWriteStream(null, {
+		fd: outFd,
+		start: 0,
+	})
 
-		if (
-			result[result.length - 1] === undefined || 
-			(result[result.length - 1].length === columns && result[result.length - 1][result[result.length-1].length - 1].length === bytesTogether)
-		) {
-			result.push([]);
-		}
-
-		let resLength = result.length - 1;
-		if (result[resLength][result[resLength].length - 1] === undefined || result[resLength][result[resLength].length - 1].length === bytesTogether) {
-			result[resLength].push([]);
-		}
-
-		result[result.length - 1][result[result.length - 1].length - 1].push(byte);
+	let inStream = fs.createReadStream(null, {
+		fd: fd,
+		start: 0,
 	});
+	
+	let overflowArray = [];
+	let offset = 0;
 
-	let strResult = '';
+	inStream.on("data", (chunk) => {
+		// Get how many bytes there are in this buffer, see if it's enough to fit in the column and groupbytes and add the overflowArray as if it's actually in it
+		// any extra, add to an array
+		
+		let bytes = [...overflowArray, ...chunk.values()];
+		overflowArray = [];
 
-	let curOffset = 0;
-	let offsetIncr = bytesTogether * columns;
-	for (let i = 0; i < result.length; i++) {
-		for (let j = 0; j < result[i].length; j++) {
-			strResult += result[i][j].join('') + ' ';
+		if (bytes.length % (bytesTogether * columns)) {
+			overflowArray = bytes.slice(bytes.length-(bytes.length % (bytesTogether * columns)), bytes.length);
+			bytes.splice(bytes.length-(bytes.length % (bytesTogether * columns)), (bytes.length % (bytesTogether * columns)));
 		}
 
-		if (includeAsciiComments) {
-			strResult += '; ';
+		for (let i = 0; i < bytes.length; i += (bytesTogether * columns)) {
+			let curBytes = bytes
+				.slice(i, i + (bytesTogether * columns));
 			
-			for (let j = 0; j < result[i].length; j++) {
-				for (let k = 0; k < result[i][j].length; k++) {
-					// this could be made into an object which we lookup the hex into, might be faster
-					let val = parseInt(result[i][j][k], 16);
-					if (val >= 32 && val <= 126) {
-						strResult += String.fromCharCode(val);
-					} else {
-						strResult += '.';
-					}
+			let str = '';
+
+			let curByte = 0;
+
+			for (let j = 0; j < curBytes.length; j++) {
+				if (curByte < bytesTogether) {
+					str += toHexByte(curBytes[j]);
+					curByte++;
+				} else {
+					str += ' ' + toHexByte(curBytes[j]);
+					curByte = 1;
 				}
 			}
-		}
 
-		if (includeOffsetComments) {
+			if (includeAsciiComments || includeOffsetComments) {
+				str += ' ;';
+			}
+
 			if (includeAsciiComments) {
-				strResult += ' ';
-			} else {
-				strResult += '; ';
+				str += ' ' + constructAscii(curBytes);
 			}
 
-			if (offsetType === 'hex') {
-				strResult += curOffset.toString(16);
-			} else if (offsetType === 'dec') {
-				strResult += curOffset.toString(10);
-			} else {
-				strResult += 'ERR';
+			if (includeOffsetComments) {
+				if (offsetType === 'hex') {
+					str += ' ' + offset.toString(16);
+				} else if (offsetType === 'dec') {
+					str += ' ' + offset.toString();
+				} else {
+					str += 'err';
+				}
 			}
-			
-			curOffset += offsetIncr;
+
+
+			outStream.write(str + '\n');
+			offset += (bytesTogether * columns);
 		}
+	});
 
-		strResult += '\n'
+	inStream.on("close", () => {
+		// TODO: write the last overFlowarray bytes
+		console.log("instream closed");
+	});
+	
+}
+
+function toHexByte (num) {
+	return (num < 16 ? '0' : '') + num.toString(16);
+}
+
+function constructAscii (curBytes) {
+	let ascii = '';
+
+	for (let j = 0; j < curBytes.length; j++) {
+		if (curBytes[j] >= 32 && curBytes[j] <= 126) { // is it in the displayable ascii range
+			ascii += String.fromCharCode(curBytes[j]);
+		} else {
+			// TODO: make this character changeable
+			ascii += '.';
+		}
 	}
 
-	return strResult;
+	return ascii;
 }
 
-let result = toHex(fs.readFileSync(filename));
-
-if (outputTo === null) { //output to console
-	console.log(result);
-} else {
-	fs.writeFileSync(outputTo, result);
-}
+toHex2(filename, outputTo);
