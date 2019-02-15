@@ -278,6 +278,44 @@ function parseType (text, i, lineCounter) {
 			line: lineCounter,
 			value: result
 		};
+	} else if (text[i + 1] === 's') { // Special strings
+		if (text[i + 2] === '0') { // "Taco" -> "T\00A\00C\00O" DOES NOT END WITH A NULL
+			ret = {
+				type: 'bytegroup',
+				byteType: 'hex',
+				pos: i,
+				line: lineCounter,
+				value: ''
+			};
+
+			i += 3; // skip past !s0
+
+			if (text[i] !== '"') {
+				throw new Error("Expected string but did not find string!");
+			}
+
+			i++; // skip past "
+
+			let res = [];
+			while (i < text.length) {
+				if (text[i] === '"') {
+					i++;
+					break;
+				}
+	
+				res.push(text[i].charCodeAt(0).toString(16));
+				i++;
+			}
+
+			for (let i = 0; i < res.length; i++) {
+				ret.value += res[i];
+				if (i < (res.length-1)) {
+					ret.value += '00';
+				}
+			}
+		} else {
+			throw new Error("Unknown special string type");
+		}
 	} else if (text[i + 1] === ':') {
 		ret = {
 			type: 'function',
