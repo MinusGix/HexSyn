@@ -149,7 +149,42 @@ function toHex (filename, outFile) {
 	});
 
 	inStream.on("close", () => {
-		// TODO: write the last overFlowarray bytes
+		let str = '';
+
+		let curByte = 0;
+
+		for (let j = 0; j < overflowArray.length; j++) {
+			if (curByte < bytesTogether) {
+				str += toHexByte(overflowArray[j]);
+				curByte++;
+			} else {
+				str += ' ' + toHexByte(overflowArray[j]);
+				curByte = 1;
+			}
+		}
+
+		if (includeAsciiComments || includeOffsetComments) {
+			str += ' ;';
+		}
+
+		if (includeAsciiComments) {
+			str += ' ' + constructAscii(overflowArray);
+		}
+
+		if (includeOffsetComments) {
+			if (offsetType === 'hex') {
+				str += ' ' + offset.toString(16);
+			} else if (offsetType === 'dec') {
+				str += ' ' + offset.toString();
+			} else {
+				str += 'err';
+			}
+		}
+
+
+		outStream.write(str + '\n');
+
+
 		console.log("instream closed");
 	});
 	
