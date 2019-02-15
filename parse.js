@@ -15,8 +15,6 @@ let BINARY_REG = /[01]/;
 let DEC_REG = /[0-9]/;
 let OCTAL_REG = /[0-7]/;
 
-console.log('RAN');
-
 
 // This hex code is from http://www.danvk.org/hex2dec.html
 // We could replace this with like (BigInt(dec).toString(16)) but this is better
@@ -298,9 +296,70 @@ function parseType (text, i, lineCounter) {
 				i++;
 			}
 		}
+	} else if (text[i + 1] === 'u') {
+		ret = {
+			type: 'bytegroup',
+			byteType: 'uint',
+			pos: i,
+			line: lineCounter,
+			value: '',
+			size: ''
+		};
+
+		i += 2; // skip past !u
+
+		// TODO: change these errs to use unexpectedCharacter
+
+		while (text[i] !== ':') {
+			if (!DEC_REG.test(text[i])) {
+				throw new Error(`Unexpected non-number at pos ${i} on line ${lineCounter}.`);
+			}
+
+			ret.size += text[i];
+			i++;
+		}
+
+		i++; // skip past :
+
+		if (ret.size === '') {
+			throw new Error(`No Size found for uint value at pos ${i} on line ${lineCounter}.`);
+		}
+
+		// if you need more size for a number bits than what Number can supply, i'll be suitably impressed
+		ret.size = Number(ret.size);
+
+		if (ret.size % 8 !== 0) {
+			throw new Error(`Currently uint size has to be a multiple of 8. At line ${i} ${lineCounter}`);
+		}
+
+		while (i < text.length && !WHITESPACE_REG.test(text[i])) {
+			if (text[i] === ';' || text[i] === '!') {
+				break;
+			}
+			
+			if (DEC_REG.test(text[i])) {
+				ret.value += text[i];
+				i++;
+			} else {
+				throw unexpectedCharacter(text[i], i, lineCounter, '', 'while parsing uint');
+			}
+		}
+
+		if (ret.value === '') {
+			throw new Error(`No value supplied for uint at pos ${i} on line ${lineCounter}`);
+		}
+
+		let val = BigInt(ret.value);
+
+		if (val >= (2n**BigInt(ret.size))) {
+			throw new Error(`UInt with number '${ret.value}' is greater than the bitsize (${ret.size}) allows on line ${lineCounter} pos: ${i}`);
+		} else if (val < 0n) {
+			throw new Error(`UInt with number '${ret.value}' is less than zero on line ${lineCounter} at pos ${i}`);
+		}
 	} else {
 		throw unexpectedCharacter(text[i], i, lineCounter, "Expected 'b' (binary), 'd' (decimal), 'x' (hexadecimal), or 'o' (octal).");
 	}
+
 	return {
 		pos: i,
 		value: ret,
@@ -453,6 +512,23 @@ function convertData (i, data, ret) {
 				line: data[i].line,
 				pos: data[i].pos,
 				value: data[i].value.split('').map(x => x.charCodeAt(0).toString(16)).join('')
+			});
+		} else if (data[i].byteType === 'uint') {
+			let byteText = decToHex(data[i].value);
+
+			if (byteText.length % 2 !== 0) { // uneven, so we add a 0
+				byteText = '0' + byteText;
+			}
+			
+			if (byteText.length < (data[i].size / 8 * 2)) {
+				byteText = '0'.repeat((data[i].size / 8 * 2) - byteText.length) + byteText;
+			}
+
+			ret.push({
+				type: 'bytegroup',
+				line: data[i].line,
+				pos: data[i].pos,
+				value: byteText
 			});
 		} else {
 			throw new Error("Unimplemented byte type: " + data[i].byteType);
