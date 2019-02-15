@@ -174,4 +174,4 @@ function constructAscii (curBytes) {
 	return ascii;
 }
 
-toHex2(filename, outputTo);
+toHex(filename, outputTo);
